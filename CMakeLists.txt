@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.2)
 
 if ($ENV{TRAVIS_BUILD_NUMBER})
-    project(bulk VERSION 0.0.$ENV{TRAVIS_BUILD_NUMBER})
+    project(bulkmt VERSION 0.0.$ENV{TRAVIS_BUILD_NUMBER})
 else()
-    project(bulk VERSION 0.0.13)
+    project(bulkmt VERSION 0.0.13)
 endif()
 
 add_executable(bulkmt_cli main.cpp)
