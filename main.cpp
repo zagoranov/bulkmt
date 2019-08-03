@@ -6,28 +6,54 @@
 
 #include <map>
 #include <memory>
-
 #include <thread>
 #include <mutex>
+#include <limits>
+#include <cassert>
 
 
+enum class streamType
+{
+	Screen, 
+	File
+};
 
 typedef void(*write_function)(std::string&, std::ostream&);
+
+static std::mutex g_i_mutex;
+static void StreamWrite(std::string &s, std::ostream& stream) {
+	std::lock_guard<std::mutex> lock(g_i_mutex);
+	stream << s << std::endl;
+}
+
 
 class ThreadTask {
 	bool bStopFlag;
 	std::thread::id this_id;
-	write_function func;
 	std::queue<std::string> que;
-	std::ostream& stream;
+	std::ostream* stream;
+	streamType s_t;
 public:
-	ThreadTask(write_function _func, std::ostream& _stream) : func(_func), stream(_stream), bStopFlag(false) { };
+	ThreadTask(std::ostream& _stream) : stream(&_stream), bStopFlag(false) { };
+	ThreadTask(streamType _s_t, size_t i) : bStopFlag(false), s_t(_s_t) {
+		if (_s_t == streamType::File) {
+			stream = new std::ofstream("bulk" + std::to_string(time(NULL)) + "_" + std::to_string(i) + ".log", std::ofstream::out);
+		}
+		else
+			if (_s_t == streamType::Screen) {
+				stream = &std::cout;
+			}
+	}
+	~ThreadTask() { 
+		if (s_t == streamType::File)
+			dynamic_cast<std::ofstream*>(stream)->close();
+	}
 	void Start() {
 		std::thread::id this_id = std::this_thread::get_id();
 		std::cout << " --- Started " << this_id << std::endl;
 		while (true) {
 			if (!que.empty()) {
-				func(que.front(), stream);
+				StreamWrite(que.front(), *stream);
 				que.pop();
 			}
 			if (bStopFlag && que.empty())
@@ -38,7 +64,7 @@ public:
 	}
 	void AddTask(std::string& s) {	que.emplace(s);	};
 	void Stop() {
-		bStopFlag = false;
+		bStopFlag = true;
 	}
 };
 
@@ -50,26 +76,30 @@ class ThreadPool {
 protected:
 	Threads m_threads;
 public:
-	void AddThreads(size_t n, write_function func, std::ostream& stream) {
-		for (size_t i = 0; i < n; ++i) {
-			auto task = std::make_shared<ThreadTask>(func, stream);
+	void AddThread(streamType s_t, size_t i) {
+			auto task = std::make_shared<ThreadTask>(s_t, i);
 			RealThreads.push(std::make_shared<std::thread>(&ThreadTask::Start, task));
 			m_threads.emplace(task, 0);
-		}
 	}
 	void ThreadExecute(std::string &s) {
 		if (!m_threads.empty()) {
-			auto mostFreeThreadIt = std::min(m_threads.begin(), m_threads.end(), [](auto &thr1, auto &thr2) { return thr1->second > thr2->second; });
-			if (mostFreeThreadIt != m_threads.end()) {
-				auto mostFreeThread = *mostFreeThreadIt;
-				mostFreeThread.first->AddTask(s);
-				mostFreeThread.second = mostFreeThread.second + 1;
+			std::shared_ptr<std::pair<std::shared_ptr<ThreadTask>, unsigned int>> mostFreeThread;
+			unsigned imin = std::numeric_limits<unsigned int>::max();
+			for (auto &thr : m_threads) {
+				if (thr.second < imin) {
+					imin = thr.second;
+					mostFreeThread = std::make_shared<std::pair<std::shared_ptr<ThreadTask>, unsigned int>>(thr);
+				}
 			}
+			assert(mostFreeThread);
+			if (!mostFreeThread) { return; }	// oopsie doopsie
+			m_threads[(*mostFreeThread).first] = (*mostFreeThread).second + 1;
+			(*mostFreeThread).first->AddTask(s);
 		}
 	}
 	void StopThreads() { 
-		for(auto thr : m_threads) {
-			thr.first->Stop();
+		for (auto tsk = m_threads.begin(); tsk != m_threads.end(); ++tsk) {
+			tsk->first->Stop();
 		}
 	}
 };
@@ -151,41 +181,18 @@ public:
 };
 
 
-static std::mutex g_i_mutex;
-static void StreamWrite(std::string &s, std::ostream& stream) {
-	std::lock_guard<std::mutex> lock(g_i_mutex);
-	stream << s << std::endl;
-}
-
-
-class screen_writer : public Writer, public ThreadPool {
+class the_writer : public Writer, public ThreadPool {
 public:
-	screen_writer(BulkMechanics& mech, size_t iThreadPoolSize) {
+	the_writer(BulkMechanics& mech, streamType strType, size_t iThreadPoolSize) {
 		mech.Subscribe(this);
-		AddThreads(iThreadPoolSize, &StreamWrite, std::cout);
-	}
-	void update(std::string &s) override {
-		//std::cout << s << std::endl;
-		ThreadExecute(s);
-	}
-};
-
-class file_writer : public Writer, public ThreadPool {
-	std::ofstream logfile;
-public:
-	file_writer(BulkMechanics& mech, size_t iThreadPoolSize) {
-		mech.Subscribe(this);
-		logfile.open("bulk" + std::to_string(time(NULL)) + ".log");
-		AddThreads(iThreadPoolSize, &StreamWrite, logfile);
-	}
-	~file_writer() {
-		logfile.close();
+		for (size_t i = 0; i < iThreadPoolSize; ++i) {
+			AddThread(strType, i);
+		}
 	}
 	void update(std::string &s) override {
 		ThreadExecute(s);
 	}
 };
-
 
 int main(int argc, char* argv[])
 {
@@ -195,24 +202,21 @@ int main(int argc, char* argv[])
 	}
 	size_t N = atoi(argv[1]);
 	Bulk bulk;
-	BulkMechanics mech{ N, bulk };
+	BulkMechanics bulkMechanics{ N, bulk };
 	
-	// 1 
-	screen_writer scr_wr(mech, 1);
-	
-	// 2 
-	file_writer file_wr(mech, 2);
+	the_writer screen_writer(bulkMechanics, streamType::Screen, 1);
+	the_writer file_writer(bulkMechanics, streamType::File, 2);
 
 	std::string line;
 	while (std::getline(std::cin, line))
 	{
 		if (!line.empty())
-			mech.Parse(line);
+			bulkMechanics.Parse(line);
 	}
 
 	// Sending stop to objects
-	scr_wr.StopThreads();
-	file_wr.StopThreads();
+	file_writer.StopThreads();
+	screen_writer.StopThreads();
 
 	// Waiting each real thread to stop
 	while (!RealThreads.empty()) {
@@ -221,6 +225,4 @@ int main(int argc, char* argv[])
 			thr->join();
 		RealThreads.pop();
 	}
-
 }
-
