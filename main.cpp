@@ -21,7 +21,7 @@ class ThreadTask {
 	std::queue<std::string> que;
 	std::ostream& stream;
 public:
-	ThreadTask(write_function _func, std::ostream& _stream) : func(_func), stream(_stream), bStopFlag(true) { };
+	ThreadTask(write_function _func, std::ostream& _stream) : func(_func), stream(_stream), bStopFlag(false) { };
 	void Start() {
 		std::thread::id this_id = std::this_thread::get_id();
 		std::cout << " --- Started " << this_id << std::endl;
@@ -78,7 +78,7 @@ public:
 
 class Writer {
 public:
-	virtual void update(std::string &s) = 0;		// Для вызова потока
+	virtual void update(std::string &s) = 0;
 };
 
 
@@ -105,11 +105,11 @@ public:
 
 
 class BulkMechanics {
-	size_t N, n_cnt, n_brackets;
+	size_t Nmax, n_cnt, n_brackets;
 	Bulk bulk;
-	std::vector<Writer*> subs;
+	std::vector<Writer*> subscriptors;
 public:
-	BulkMechanics(size_t _N, Bulk &_bulk) : N(_N), bulk(_bulk), n_cnt(0), n_brackets(0) { }
+	BulkMechanics(size_t _Nmax, Bulk &_bulk) : Nmax(_Nmax), bulk(_bulk), n_cnt(0), n_brackets(0) { }
 	void Parse(std::string &str) {
 		if (str == "{") {
 			if(n_brackets == 0)
@@ -129,7 +129,7 @@ public:
 				bulk.Add(str);
 				if (n_brackets == 0) {
 					++n_cnt;
-					if (n_cnt == N) {
+					if (n_cnt == Nmax) {
 						Flash();
 					}
 				}
@@ -138,14 +138,14 @@ public:
 	void Flash() {
 		std::string str = bulk.Retrive();
 		if (!str.empty()) {
-			for (auto s : subs) {
+			for (auto s : subscriptors) {
 				s->update(str);
 			}
 		}
 		n_cnt = 0;
 	}
 	void Subscribe(Writer *writer) {
-		subs.push_back(writer);
+		subscriptors.push_back(writer);
 	}
 
 };
@@ -197,10 +197,10 @@ int main(int argc, char* argv[])
 	Bulk bulk;
 	BulkMechanics mech{ N, bulk };
 	
-	// 1 поток вывода на экран
+	// 1 
 	screen_writer scr_wr(mech, 1);
 	
-	// 2 потока вывода в файл
+	// 2 
 	file_writer file_wr(mech, 2);
 
 	std::string line;
@@ -223,6 +223,4 @@ int main(int argc, char* argv[])
 	}
 
 }
-
-
 
