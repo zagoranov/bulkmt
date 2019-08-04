@@ -6,18 +6,19 @@ else()
     project(bulkmt VERSION 0.0.13)
 endif()
 
-add_executable(bulkmt_cli main.cpp)
+add_executable(bulkmt main.cpp)
 
-set_target_properties(bulkmt_cli PROPERTIES
+set_target_properties(bulkmt PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
-    COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra"
+    COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;-fsanitize=thread"
+    LINK_OPTIONS "-fsanitize=thread"
 )
 
-set_target_properties(bulkmt_cli PROPERTIES LINK_FLAGS -pthread
+set_target_properties(bulkmt PROPERTIES LINK_FLAGS -pthread
 )
 
-install(TARGETS bulkmt_cli RUNTIME DESTINATION bin)
+install(TARGETS bulkmt RUNTIME DESTINATION bin)
 
 set(CPACK_GENERATOR DEB)
 
