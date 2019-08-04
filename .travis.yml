@@ -11,4 +11,4 @@ deploy:
   provider: script
   skip_cleanup: true
   script:
-  - curl -T bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb -uromanmuz:$BINTRAY_API_KEY https://api.bintray.com/content/romanmuz/task1/bulkmt/$TRAVIS_BUILD_NUMBER/bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb
+  - curl -T bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb -uromanmuz:$BINTRAY_API_KEY https://api.bintray.com/content/romanmuz/task1/bulkmt/$TRAVIS_BUILD_NUMBER/bulkmt-0.0.$TRAVIS_BUILD_NUMBER-Linux.deb;deb_distribution=xenial;deb_component=main;deb_architecture=amd64;publish=1
