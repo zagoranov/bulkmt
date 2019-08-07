@@ -11,7 +11,8 @@ add_executable(bulkmt main.cpp)
 set_target_properties(bulkmt PROPERTIES
     CXX_STANDARD 14
     CXX_STANDARD_REQUIRED ON
-    COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;-fsanitize=thread"
+    #COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;-fsanitize=thread"   #oh nonono
+    COMPILE_OPTIONS "-Wpedantic;-Wall;-Wextra;"
     LINK_OPTIONS "-fsanitize=thread"
 )
 
