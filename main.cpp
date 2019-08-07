@@ -10,6 +10,8 @@
 #include <mutex>
 #include <limits>
 #include <cassert>
+#include <chrono>
+#include <condition_variable>
 
 
 enum class streamType
@@ -33,6 +35,9 @@ class ThreadTask {
 	std::queue<std::string> que;
 	std::ostream* stream;
 	streamType s_t;
+	
+	std::mutex m;
+	std::condition_variable cond_var;
 public:
 	ThreadTask(std::ostream& _stream) : stream(&_stream), bStopFlag(false) { };
 	ThreadTask(streamType _s_t, size_t i) : bStopFlag(false), s_t(_s_t) {
@@ -51,20 +56,25 @@ public:
 	void Start() {
 		std::thread::id this_id = std::this_thread::get_id();
 		std::cout << " --- Started " << this_id << std::endl;
-		while (true) {
+		std::unique_lock<std::mutex> lock(m);
+		while ( !(bStopFlag && que.empty()) ) {
+			while (que.empty() && !bStopFlag) {
+				cond_var.wait(lock);
+			}
 			if (!que.empty()) {
 				StreamWrite(que.front(), *stream);
 				que.pop();
 			}
-			if (bStopFlag && que.empty())
-				break;
-			std::this_thread::sleep_for(std::chrono::seconds(1));
 		}
 		std::cout << " --- Stopped " << this_id << std::endl;
 	}
-	void AddTask(std::string& s) {	que.emplace(s);	};
+	void AddTask(std::string& s) {	
+		que.emplace(s);	
+		cond_var.notify_one();
+	};
 	void Stop() {
 		bStopFlag = true;
+		cond_var.notify_one();
 	}
 };
 
@@ -205,7 +215,7 @@ int main(int argc, char* argv[])
 	BulkMechanics bulkMechanics{ N, bulk };
 	
 	the_writer screen_writer(bulkMechanics, streamType::Screen, 1);
-	the_writer file_writer(bulkMechanics, streamType::File, 2);
+	the_writer file_writer(bulkMechanics, streamType::File, 1);
 
 	std::string line;
 	while (std::getline(std::cin, line))
@@ -218,11 +228,16 @@ int main(int argc, char* argv[])
 	file_writer.StopThreads();
 	screen_writer.StopThreads();
 
+	
 	// Waiting each real thread to stop
 	while (!RealThreads.empty()) {
 		auto thr = RealThreads.front();
-		if(thr->joinable())
-			thr->join();
+		try {
+			if (thr->joinable())
+				thr->join();
+			//thr->detach();
+		}
+		catch (...) {};
 		RealThreads.pop();
 	}
 }
