@@ -178,7 +178,7 @@ public:
 	void Flash() {
 		std::string str = bulk.Retrive();
 		if (!str.empty()) {
-			for (auto s : subscriptors) {
+			for (auto& s : subscriptors) {
 				s->update(str);
 			}
 		}
