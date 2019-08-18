@@ -13,6 +13,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <atomic>
+#include <algorithm>
 
 enum class streamType
 {
