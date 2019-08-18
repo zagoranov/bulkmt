@@ -12,7 +12,7 @@
 #include <cassert>
 #include <chrono>
 #include <condition_variable>
-
+#include <atomic>
 
 enum class streamType
 {
@@ -30,17 +30,18 @@ static void StreamWrite(std::string &s, std::ostream& stream) {
 
 
 class ThreadTask {
-	bool bStopFlag;
+	std::atomic<bool> bStopFlag;
 	std::thread::id this_id;
 	std::queue<std::string> que;
 	std::ostream* stream;
 	streamType s_t;
+	size_t command_cnt, blocks_cnt;
 	
 	std::mutex m;
 	std::condition_variable cond_var;
 public:
-	ThreadTask(std::ostream& _stream) : stream(&_stream), bStopFlag(false) { };
-	ThreadTask(streamType _s_t, size_t i) : bStopFlag(false), s_t(_s_t) {
+	ThreadTask(std::ostream& _stream) : stream(&_stream), bStopFlag(false), command_cnt(0), blocks_cnt(0) { };
+	ThreadTask(streamType _s_t, size_t i) : bStopFlag(false), s_t(_s_t), command_cnt(0), blocks_cnt(0) {
 		if (_s_t == streamType::File) {
 			stream = new std::ofstream("bulk" + std::to_string(time(NULL)) + "_" + std::to_string(i) + ".log", std::ofstream::out);
 		}
@@ -54,9 +55,10 @@ public:
 			dynamic_cast<std::ofstream*>(stream)->close();
 	}
 	void Start() {
-		std::thread::id this_id = std::this_thread::get_id();
+		this_id = std::this_thread::get_id();
 		std::cout << " --- Started " << this_id << std::endl;
 		std::unique_lock<std::mutex> lock(m);
+
 		while ( !(bStopFlag && que.empty()) ) {
 			while (que.empty() && !bStopFlag) {
 				cond_var.wait(lock);
@@ -68,13 +70,22 @@ public:
 		}
 		std::cout << " --- Stopped " << this_id << std::endl;
 	}
+
 	void AddTask(std::string& s) {	
+		std::unique_lock<std::mutex> lock(m);
+		command_cnt += std::count(s.begin(), s.end(), ',') + 1;
+		++blocks_cnt;
 		que.emplace(s);	
 		cond_var.notify_one();
 	};
 	void Stop() {
+		std::unique_lock<std::mutex> lock(m);
 		bStopFlag = true;
 		cond_var.notify_one();
+	}
+	void ShowStatistics() {
+		std::unique_lock<std::mutex> lock(m);
+		std::cout << "Thread id " << this_id << " blocks proceeded " << blocks_cnt << " commands proceeded " << command_cnt << std::endl;
 	}
 };
 
@@ -111,6 +122,10 @@ public:
 		for (auto tsk = m_threads.begin(); tsk != m_threads.end(); ++tsk) {
 			tsk->first->Stop();
 		}
+	}
+	void AllStatistics() const {
+		for (auto tsk = m_threads.begin(); tsk != m_threads.end(); ++tsk)
+			tsk->first->ShowStatistics();
 	}
 };
 
@@ -215,18 +230,22 @@ int main(int argc, char* argv[])
 	BulkMechanics bulkMechanics{ N, bulk };
 	
 	the_writer screen_writer(bulkMechanics, streamType::Screen, 1);
-	the_writer file_writer(bulkMechanics, streamType::File, 1);
+	the_writer file_writer(bulkMechanics, streamType::File, 2);
 
 	std::string line;
-	while (std::getline(std::cin, line))
+	while (std::getline(std::cin, line) && line != "q")
 	{
 		if (!line.empty())
 			bulkMechanics.Parse(line);
 	}
 
+	// Statistics
+	screen_writer.AllStatistics();
+	file_writer.AllStatistics();
+
 	// Sending stop to objects
-	file_writer.StopThreads();
 	screen_writer.StopThreads();
+	file_writer.StopThreads();
 
 	
 	// Waiting each real thread to stop
